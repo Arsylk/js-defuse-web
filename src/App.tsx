@@ -312,6 +312,7 @@ export default function App() {
   const [examples, setExamples] = useState<Example[]>([]);
   const [showExamples, setShowExamples] = useState(false);
   const [toast, setToast] = useState<{ kind: 'ok' | 'warn' | 'error'; text: string } | null>(null);
+  const [newerBuild, setNewerBuild] = useState<string | null>(null);
   const inputEditorRef = useRef<EditorHandle>(null);
   const outputEditorRef = useRef<EditorHandle>(null);
   const logRef = useRef<HTMLDivElement>(null);
@@ -348,6 +349,19 @@ export default function App() {
       .then((r) => r.json())
       .then((list: Example[]) => setExamples(list))
       .catch(() => {});
+    // GitHub Pages caches index.html for ten minutes: a tab opened before a
+    // deploy keeps the old build. version.txt is fetched past the cache.
+    const checkBuild = () =>
+      fetch(`${import.meta.env.BASE_URL}version.txt`, { cache: 'no-store' })
+        .then((r) => (r.ok ? r.text() : ''))
+        .then((v) => {
+          const id = v.trim();
+          if (id && id !== __BUILD_ID__) setNewerBuild(id);
+        })
+        .catch(() => {});
+    checkBuild();
+    const timer = window.setInterval(checkBuild, 5 * 60_000);
+    return () => window.clearInterval(timer);
   }, [engine]);
 
   // keep the log scrolled to the newest line while running
@@ -580,7 +594,7 @@ export default function App() {
             <div>
               <div style={{ fontSize: 14, fontWeight: 700, color: C.text, letterSpacing: '-0.01em', lineHeight: 1 }}>JS Deobfuscator</div>
               <div style={{ fontSize: 11, color: C.overlay0, lineHeight: 1, marginTop: 2 }}>
-                js-defuser · runs entirely in your browser
+                js-defuser · runs entirely in your browser · <span title="build" className="font-mono">{__BUILD_ID__}</span>
                 {!engineReady && <span style={{ color: C.peach }}> · loading sandbox…</span>}
               </div>
             </div>
@@ -869,6 +883,36 @@ export default function App() {
         )}
       </div>
 
+      {newerBuild && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 60,
+            right: 24,
+            zIndex: 50,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '8px 12px',
+            borderRadius: 8,
+            fontSize: 12,
+            backgroundColor: C.surface0,
+            color: C.text,
+            border: `1px solid ${C.blue}66`,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+          }}
+        >
+          <span>
+            A newer build is live (<span className="font-mono">{newerBuild}</span>); this tab still runs <span className="font-mono">{__BUILD_ID__}</span>.
+          </span>
+          <button onClick={() => window.location.reload()} style={{ ...headerButton({ primary: true }), padding: '4px 10px', fontSize: 12 }}>
+            Reload
+          </button>
+          <button onClick={() => setNewerBuild(null)} title="Dismiss" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
+            <X size={13} style={{ color: C.overlay0 }} />
+          </button>
+        </div>
+      )}
       {toast && <div style={toastStyle(toast.kind)}>{toast.text}</div>}
     </div>
   );
