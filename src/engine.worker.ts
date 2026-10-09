@@ -3,13 +3,13 @@
 // gets every log entry back as it is produced, then the result (with the
 // output parsed for the AST explorer).
 import { parse } from '@babel/parser';
-import { DEFAULT_ENABLED_PASSES, PASS_CATALOG, deobfuscate, prepare } from 'js-defuser/browser';
+import { DEFAULT_ENABLED_PASSES, PIPELINE, deobfuscate, prepare } from 'js-defuser/browser';
 import type { Entry } from 'js-defuser/logger';
-import type { DoneMessage, JobMessage, WorkerMessage } from './protocol';
+import type { DoneMessage, JobMessage, ParseError, WorkerMessage } from './protocol';
 
 const post = (m: WorkerMessage) => self.postMessage(m);
 
-post({ type: 'catalog', passes: PASS_CATALOG, defaults: [...DEFAULT_ENABLED_PASSES] });
+post({ type: 'catalog', pipeline: PIPELINE, defaults: [...DEFAULT_ENABLED_PASSES] });
 prepare().then(
   () => post({ type: 'ready' }),
   (e: unknown) => post({ type: 'error', message: `sandbox failed to load: ${e instanceof Error ? e.message : String(e)}` })
@@ -26,15 +26,20 @@ self.onmessage = async (ev: MessageEvent<JobMessage>) => {
       onLog: (_line: string, entry: Entry) => post({ type: 'log', entry }),
     });
     let ast: unknown = null;
+    const outputErrors: ParseError[] = [];
     try {
-      ast = parse(result.deobfuscatedCode, {
+      const file = parse(result.deobfuscatedCode, {
         sourceType: 'unambiguous',
         plugins: ['jsx'],
         errorRecovery: true,
         allowReturnOutsideFunction: true,
-      }).program;
-    } catch {
-      ast = null;
+      });
+      ast = file.program;
+      for (const e of (file as unknown as { errors?: Array<{ message: string; loc?: { line: number; column: number } }> }).errors ?? [])
+        outputErrors.push({ message: e.message, line: e.loc?.line, col: e.loc?.column });
+    } catch (e) {
+      const err = e as { message: string; loc?: { line: number; column: number } };
+      outputErrors.push({ message: err.message, line: err.loc?.line, col: err.loc?.column });
     }
     const done: DoneMessage = {
       type: 'done',
@@ -44,6 +49,7 @@ self.onmessage = async (ev: MessageEvent<JobMessage>) => {
       errors: result.errors,
       structuredParseErrors: result.structuredParseErrors,
       structuredParseWarnings: result.structuredParseWarnings,
+      outputErrors,
       metadata: result.metadata,
       ast,
     };

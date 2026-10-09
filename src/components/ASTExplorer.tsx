@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { ChevronRight, ChevronDown, Crosshair } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
+import { ChevronRight, ChevronDown, Crosshair, Locate } from 'lucide-react';
 import { mocha } from 'js-defuser/logger';
 
 // ── node-type colours (Catppuccin Mocha) ─────────────────────────────────────
@@ -38,7 +38,32 @@ const NODE_COLORS: Record<string, string> = {
 const nodeColor = (type: string) => NODE_COLORS[type] ?? mocha.overlay0;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyNode = any;
+export type AnyNode = any;
+
+export interface NodeRange {
+  start: number;
+  end: number;
+  startLine: number;
+  startCol: number;
+  endLine: number;
+  endCol: number;
+}
+
+/** Babel's offsets and 1-based line / 0-based column, when the node carries them. */
+export function nodeRange(node: AnyNode): NodeRange | null {
+  if (!node || typeof node.start !== 'number' || typeof node.end !== 'number' || !node.loc) return null;
+  return {
+    start: node.start,
+    end: node.end,
+    startLine: node.loc.start.line,
+    startCol: node.loc.start.column,
+    endLine: node.loc.end.line,
+    endCol: node.loc.end.column,
+  };
+}
+
+export const rangeLabel = (r: NodeRange) =>
+  r.startLine === r.endLine && r.startCol === r.endCol ? `${r.startLine}:${r.startCol + 1}` : `${r.startLine}:${r.startCol + 1}–${r.endLine}:${r.endCol + 1}`;
 
 // ── inline summary ────────────────────────────────────────────────────────────
 function inlineSummary(node: AnyNode): string {
@@ -70,7 +95,7 @@ function inlineSummary(node: AnyNode): string {
   }
 }
 
-const SKIP_KEYS = new Set(['start', 'end', 'loc', 'extra', 'innerComments', 'leadingComments', 'trailingComments', 'tokens']);
+const SKIP_KEYS = new Set(['start', 'end', 'loc', 'extra', 'innerComments', 'leadingComments', 'trailingComments', 'tokens', 'range']);
 
 interface NodeProps {
   node: AnyNode;
@@ -92,7 +117,7 @@ function ASTNode({ node, depth, selectedPath, onSelect, path }: NodeProps) {
     return v && typeof v === 'object' && (v.type || Array.isArray(v));
   });
   const hasChildren = childNodeKeys.length > 0;
-  const indentPx = depth * 14;
+  const indentPx = 8 + depth * 14;
 
   return (
     <div>
@@ -162,16 +187,27 @@ function ASTNode({ node, depth, selectedPath, onSelect, path }: NodeProps) {
 
 interface Props {
   ast: AnyNode | null;
+  /** The selected node, with its text range in the output when it has one. */
+  onSelect?: (node: AnyNode, range: NodeRange | null) => void;
 }
 
-export default function ASTExplorer({ ast }: Props) {
+export default function ASTExplorer({ ast, onSelect }: Props) {
   const [selectedNode, setSelectedNode] = useState<AnyNode>(null);
   const [selectedPath, setSelectedPath] = useState('');
 
-  const handleSelect = useCallback((node: AnyNode, path: string) => {
-    setSelectedNode(node);
-    setSelectedPath(path);
-  }, []);
+  useEffect(() => {
+    setSelectedNode(null);
+    setSelectedPath('');
+  }, [ast]);
+
+  const handleSelect = useCallback(
+    (node: AnyNode, path: string) => {
+      setSelectedNode(node);
+      setSelectedPath(path);
+      onSelect?.(node, nodeRange(node));
+    },
+    [onSelect]
+  );
 
   if (!ast) {
     return (
@@ -190,31 +226,89 @@ export default function ASTExplorer({ ast }: Props) {
     );
   }
 
+  const range = selectedNode ? nodeRange(selectedNode) : null;
+  const scalars = selectedNode
+    ? Object.entries(selectedNode).filter(
+        ([k, v]) => !SKIP_KEYS.has(k) && k !== 'type' && (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || v === null)
+      )
+    : [];
+  const childrenOf = selectedNode
+    ? Object.entries(selectedNode).filter(([k, v]) => !SKIP_KEYS.has(k) && k !== 'type' && v && typeof v === 'object')
+    : [];
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       <div className="flex-1 overflow-y-auto py-2 min-h-0" style={{ backgroundColor: mocha.base }}>
         <ASTNode node={ast} depth={0} selectedPath={selectedPath} onSelect={handleSelect} path="root" />
       </div>
 
+      {/* ── inspector ─────────────────────────────────────────────────────── */}
       {selectedNode && (
-        <div className="flex-shrink-0 border-t" style={{ borderColor: mocha.surface0, backgroundColor: mocha.mantle }}>
-          <div className="px-3 py-2 flex items-center gap-2 min-w-0">
+        <div
+          className="flex-shrink-0 flex flex-col"
+          style={{ borderTop: `1px solid ${mocha.surface0}`, backgroundColor: mocha.mantle, maxHeight: '45%' }}
+        >
+          <div
+            className="flex items-center gap-2"
+            style={{ padding: '10px 14px 8px', borderBottom: `1px solid ${mocha.surface0}` }}
+          >
             <span className="text-xs font-bold font-mono" style={{ color: nodeColor(selectedNode.type), flexShrink: 0 }}>
               {selectedNode.type}
             </span>
-            <span className="text-xs font-mono truncate" style={{ color: mocha.surface1 }}>
-              {selectedPath}
-            </span>
+            {range && (
+              <button
+                onClick={() => onSelect?.(selectedNode, range)}
+                title="Select this node in the output"
+                className="flex items-center gap-1 font-mono"
+                style={{
+                  marginLeft: 'auto',
+                  fontSize: 11,
+                  color: mocha.blue,
+                  background: 'none',
+                  border: `1px solid ${mocha.surface1}`,
+                  borderRadius: 5,
+                  padding: '2px 7px',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                <Locate size={10} />
+                {rangeLabel(range)}
+              </button>
+            )}
           </div>
-          <div className="px-3 pb-2 flex flex-wrap gap-x-4 gap-y-1">
-            {Object.entries(selectedNode)
-              .filter(([k, v]) => !SKIP_KEYS.has(k) && k !== 'type' && (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'))
-              .map(([k, v]) => (
-                <div key={k} className="font-mono text-xs">
-                  <span style={{ color: mocha.surface2 }}>{k}: </span>
-                  <span style={{ color: mocha.green }}>{JSON.stringify(v)}</span>
-                </div>
-              ))}
+          <div className="overflow-y-auto" style={{ padding: '8px 14px 12px' }}>
+            <div className="font-mono text-xs truncate" style={{ color: mocha.overlay0, marginBottom: scalars.length || childrenOf.length ? 8 : 0 }} title={selectedPath}>
+              {selectedPath}
+            </div>
+            {scalars.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', columnGap: 12, rowGap: 4, alignItems: 'baseline' }}>
+                {scalars.map(([k, v]) => (
+                  <div key={k} style={{ display: 'contents' }}>
+                    <span className="font-mono text-xs" style={{ color: mocha.subtext0 }}>
+                      {k}
+                    </span>
+                    <span className="font-mono text-xs" style={{ color: v === null ? mocha.overlay0 : typeof v === 'string' ? mocha.green : mocha.peach, wordBreak: 'break-all' }}>
+                      {JSON.stringify(v)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {childrenOf.length > 0 && (
+              <div className="flex flex-wrap gap-1" style={{ marginTop: scalars.length ? 10 : 0 }}>
+                {childrenOf.map(([k, v]) => (
+                  <span
+                    key={k}
+                    className="font-mono"
+                    style={{ fontSize: 11, color: mocha.overlay1, backgroundColor: mocha.surface0, border: `1px solid ${mocha.surface1}`, borderRadius: 4, padding: '1px 6px' }}
+                  >
+                    {k}
+                    {Array.isArray(v) ? `[${v.length}]` : (v as AnyNode).type ? `: ${(v as AnyNode).type}` : ''}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

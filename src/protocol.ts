@@ -8,10 +8,25 @@ export interface PassInfo {
   pass_order: number;
 }
 
+export interface PipelineStep extends PassInfo {
+  logId: string | null;
+  runs: number;
+  stage: 'a' | 'b' | 'c';
+}
+
+export interface PipelineStage {
+  id: 'a' | 'b' | 'c';
+  title: string;
+  summary: string;
+  steps: PipelineStep[];
+}
+
 export interface ParseError {
   message: string;
   line?: number;
   col?: number;
+  endLine?: number;
+  endCol?: number;
 }
 
 export interface JobMessage {
@@ -30,12 +45,14 @@ export interface DoneMessage {
   errors: string[];
   structuredParseErrors: ParseError[];
   structuredParseWarnings: ParseError[];
+  /** syntax problems Babel reports in the output itself (should be none) */
+  outputErrors: ParseError[];
   metadata: Record<string, unknown>;
   ast: unknown;
 }
 
 export type WorkerMessage =
-  | { type: 'catalog'; passes: PassInfo[]; defaults: string[] }
+  | { type: 'catalog'; pipeline: PipelineStage[]; defaults: string[] }
   | { type: 'ready' }
   | { type: 'log'; entry: Entry }
   | DoneMessage

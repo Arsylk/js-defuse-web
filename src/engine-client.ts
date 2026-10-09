@@ -1,10 +1,10 @@
 // One worker, one job at a time. Stopping a job terminates the worker (the
 // engine cannot be interrupted mid-pass) and starts a fresh one.
 import type { Entry } from 'js-defuser/logger';
-import type { DoneMessage, JobMessage, PassInfo, WorkerMessage } from './protocol';
+import type { DoneMessage, JobMessage, PipelineStage, WorkerMessage } from './protocol';
 
 export interface Catalog {
-  passes: PassInfo[];
+  pipeline: PipelineStage[];
   defaults: string[];
 }
 
@@ -34,7 +34,7 @@ export class EngineClient {
       const m = ev.data;
       switch (m.type) {
         case 'catalog':
-          this.catalog = { passes: m.passes, defaults: m.defaults };
+          this.catalog = { pipeline: m.pipeline, defaults: m.defaults };
           for (const r of this.catalogResolvers) r(this.catalog);
           this.catalogResolvers = [];
           break;

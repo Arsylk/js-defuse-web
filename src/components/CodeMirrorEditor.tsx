@@ -127,6 +127,10 @@ export interface EditorDiagnostic {
 export interface EditorHandle {
   /** Jump the editor cursor & scroll to a 1-based line, 0-based col */
   jumpTo: (line: number, col?: number) => void;
+  /** Select a range of document offsets and scroll it into view */
+  selectRange: (from: number, to: number) => void;
+  /** Select from one 1-based line / 0-based col to another */
+  selectLines: (line: number, col: number, endLine: number, endCol: number) => void;
 }
 
 function buildExtensions(readOnly: boolean, diagnosticsFn: (view: EditorView) => Diagnostic[]) {
@@ -150,8 +154,9 @@ function buildExtensions(readOnly: boolean, diagnosticsFn: (view: EditorView) =>
     javascript({ jsx: false, typescript: false }),
     catppuccinTheme,
     EditorState.readOnly.of(readOnly),
-    // Only add linting on the writable (input) editor
-    ...(!readOnly ? [lintGutter(), linter(diagnosticsFn, { delay: 0 })] : []),
+    // Both editors show diagnostics: the input's parse errors, the output's
+    lintGutter(),
+    linter(diagnosticsFn, { delay: 0 }),
     keymap.of([
       ...closeBracketsKeymap,
       ...defaultKeymap,
@@ -184,25 +189,45 @@ const CodeMirrorEditor = forwardRef<EditorHandle, Props>(function CodeMirrorEdit
   const diagnosticsRef = useRef<EditorDiagnostic[]>(diagnostics ?? []);
   diagnosticsRef.current = diagnostics ?? [];
 
-  // Expose jumpTo so page.tsx can scroll to an error
-  useImperativeHandle(ref, () => ({
-    jumpTo(line: number, col = 0) {
+  // Expose navigation so the page can anchor errors and AST nodes in the text
+  useImperativeHandle(ref, () => {
+    const offsetOf = (doc: EditorState['doc'], line: number, col: number) => {
+      const lineObj = doc.line(Math.max(1, Math.min(line, doc.lines)));
+      return Math.min(lineObj.from + Math.max(0, col), lineObj.to);
+    };
+    const select = (anchor: number, head: number) => {
       const view = viewRef.current;
       if (!view) return;
       try {
-        const doc = view.state.doc;
-        const lineObj = doc.line(Math.max(1, Math.min(line, doc.lines)));
-        const pos = Math.min(lineObj.from + col, lineObj.to);
+        const max = view.state.doc.length;
+        const a = Math.max(0, Math.min(anchor, max));
+        const h = Math.max(0, Math.min(head, max));
         view.dispatch({
-          selection: { anchor: pos },
-          effects: EditorView.scrollIntoView(pos, { y: 'center' }),
+          selection: { anchor: a, head: h },
+          effects: EditorView.scrollIntoView(a, { y: 'center' }),
         });
         view.focus();
       } catch {
         /**/
       }
-    },
-  }));
+    };
+    return {
+      jumpTo(line: number, col = 0) {
+        const view = viewRef.current;
+        if (!view) return;
+        const pos = offsetOf(view.state.doc, line, col);
+        select(pos, pos);
+      },
+      selectRange(from: number, to: number) {
+        select(from, to);
+      },
+      selectLines(line: number, col: number, endLine: number, endCol: number) {
+        const view = viewRef.current;
+        if (!view) return;
+        select(offsetOf(view.state.doc, line, col), offsetOf(view.state.doc, endLine, endCol));
+      },
+    };
+  });
 
   // Initialise editor once per readOnly value
   useEffect(() => {
@@ -266,9 +291,9 @@ const CodeMirrorEditor = forwardRef<EditorHandle, Props>(function CodeMirrorEdit
   // Re-trigger lint whenever diagnostics change
   useEffect(() => {
     const view = viewRef.current;
-    if (!view || readOnly) return;
+    if (!view) return;
     view.dispatch({}); // empty transaction forces linter re-run
-  }, [diagnostics, readOnly]);
+  }, [diagnostics]);
 
   return (
     <div
