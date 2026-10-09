@@ -1,0 +1,38 @@
+[
+  {
+    "id": "jsconfuser-editor-max",
+    "name": "js-confuser · editor demo, max settings",
+    "description": "greet('Internet User') through every js-confuser transform plus integrity, selfDefending and tamperProtection (960 KB → one function). Takes a minute or two.",
+    "file": "jsconfuser-editor-max.js"
+  },
+  {
+    "id": "jsconfuser-medium-greet",
+    "name": "js-confuser · medium preset",
+    "description": "The same greet program at the medium preset: dispatchers, flattening, string concealing, control-flow flattening.",
+    "file": "jsconfuser-medium-greet.js"
+  },
+  {
+    "id": "jsconfuser-cff-counter",
+    "name": "js-confuser · control-flow flattening",
+    "description": "A closure counter with only controlFlowFlattening on — state-machine recovery in isolation.",
+    "file": "jsconfuser-cff-counter.js"
+  },
+  {
+    "id": "obfuscatorio-rc4-counter",
+    "name": "obfuscator.io · RC4 string array",
+    "description": "javascript-obfuscator with a rotated, RC4-encoded string array over a closure counter.",
+    "file": "obfuscatorio-rc4-counter.js"
+  },
+  {
+    "id": "obfuscatorio-base64-objects",
+    "name": "obfuscator.io · base64 string array",
+    "description": "javascript-obfuscator with a base64 string array over an object/JSON program.",
+    "file": "obfuscatorio-base64-objects.js"
+  },
+  {
+    "id": "string-array",
+    "name": "string array + hex escapes",
+    "description": "Strings moved to an array and spelled as \\x escapes, members in bracket notation.",
+    "inline": "(function () {\n  var _0x4567 = ['\\x48\\x65\\x6c\\x6c\\x6f', 'World', 'log'];\n  console[_0x4567[2]](_0x4567[0] + ' ' + _0x4567[1]);\n})();"
+  }
+]
