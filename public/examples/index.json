@@ -18,6 +18,12 @@
     "file": "jsconfuser-cff-counter.js"
   },
   {
+    "id": "obfuscatorio5-high-greet",
+    "name": "obfuscator.io 5.9 · high preset",
+    "description": "javascript-obfuscator 5.9 at its high-obfuscation preset: RC4 string array with chained function wrappers, control-flow flattening, dead code, self-defending and debug protection.",
+    "file": "obfuscatorio5-high-greet.js"
+  },
+  {
     "id": "obfuscatorio-rc4-counter",
     "name": "obfuscator.io · RC4 string array",
     "description": "javascript-obfuscator with a rotated, RC4-encoded string array over a closure counter.",
